@@ -1,38 +1,13 @@
-/* Copyright (c) 2017 FIRST. All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without modification,
- * are permitted (subject to the limitations in the disclaimer below) provided that
- * the following conditions are met:
- *
- * Redistributions of source code must retain the above copyright notice, this list
- * of conditions and the following disclaimer.
- *
- * Redistributions in binary form must reproduce the above copyright notice, this
- * list of conditions and the following disclaimer in the documentation and/or
- * other materials provided with the distribution.
- *
- * Neither the name of FIRST nor the names of its contributors may be used to endorse or
- * promote products derived from this software without specific prior written permission.
- *
- * NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY THIS
- * LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
- * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
- * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
- * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
- * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */
 
-package org.firstinspires.ftc.robotcontroller.external.samples;
+package org.firstinspires.ftc.teamcode;
 
-import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
-import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.Disabled;
+import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.hardware.DcMotor;
+import com.qualcomm.robotcore.hardware.DcMotorSimple;
+import com.qualcomm.robotcore.hardware.DistanceSensor;
+import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.ElapsedTime;
 import com.qualcomm.robotcore.util.Range;
 
@@ -50,34 +25,94 @@ import com.qualcomm.robotcore.util.Range;
  * Remove or comment out the @Disabled line to add this opmode to the Driver Station OpMode list
  */
 
-@TeleOp(name="Basic: Linear OpMode", group="Linear Opmode")
+@Autonomous(name="Basic: Linear OpMode", group="Linear Opmode")
 @Disabled
-public class BasicOpMode_Linear extends LinearOpMode {
+public class testAutonomousOpMode extends LinearOpMode {
 
     // Declare OpMode members.
     private ElapsedTime runtime = new ElapsedTime();
-    private DcMotor leftDrive = null;
-    private DcMotor rightDrive = null;
+    private ElapsedTime runtime = new ElapsedTime();
+    private DcMotor rightFrontDrive, rightBackDrive, leftFrontDrive, leftBackDrive, leftLift, rightLift, leftIntake, rightIntake;
+
+
+    private Servo armServo, capstoneServo, clawServo, sensorArm; //4 servos
+    double initialCapstoneServoPosition = 0.0; //change according to whatever
+    double initialArmServoPosition = 0.0; //change according to to whatever
+    double initialClawServoPosition = 0.5; //gonna start halfway from its position, can't start full
+    double initialSensorArmPosition = 0;
+
+    private DistanceSensor sensorRangeLeftFront, sensorRangeLeftBack, sensorRangeRightFront, sensorRangeRightBack, sensorRangeArm;
+
+    private float drivePowerRY, drivePowerRX, drivePowerLY, drivePowerLX;
+
+    //encoder stuff for the lift
+    static final double     COUNTS_PER_MOTOR_GOBILDA435    = 753.2 ;    // GoBilda 435 RPM counts
+    static final double     DRIVE_GEAR_REDUCTION    = 0.5 ;     // This is < 1.0 if geared UP
+    static final double     WHEEL_DIAMETER_INCHES   = 2 ;     // For figuring circumference
+    static final double     COUNTS_PER_INCH         = (COUNTS_PER_MOTOR_GOBILDA435 * DRIVE_GEAR_REDUCTION) /
+            (WHEEL_DIAMETER_INCHES * 3.1415);
+    //static final double     DRIVE_SPEED             = 0.3; //not needed for my encoder code
+    //static final double     TURN_SPEED              = 0.3; //not needed for my encoder code
+
+    int stoneLevel = 0; //hopefully this doesn't get looped
+    long setTime = System.nanoTime();
+    boolean hasRun = false;
 
     @Override
     public void runOpMode() {
-        telemetry.addData("Status", "Initialized");
+        telemetry.addData(">", "Press Play to start tracking");
         telemetry.update();
 
-        // Initialize the hardware variables. Note that the strings used here as parameters
-        // to 'get' must correspond to the names assigned during the robot configuration
-        // step (using the FTC Robot Controller app on the phone).
-        leftDrive  = hardwareMap.get(DcMotor.class, "left_drive");
-        rightDrive = hardwareMap.get(DcMotor.class, "right_drive");
+        rightFrontDrive = hardwareMap.dcMotor.get("rightFrontDrive"); //Right drive motors
+        rightBackDrive = hardwareMap.dcMotor.get("rightBackDrive");
 
-        // Most robots need the motor on one side to be reversed to drive forward
-        // Reverse the motor that runs backwards when connected directly to the battery
-        leftDrive.setDirection(DcMotor.Direction.FORWARD);
-        rightDrive.setDirection(DcMotor.Direction.REVERSE);
+        leftFrontDrive = hardwareMap.dcMotor.get("leftFrontDrive"); //Left drive motors
+        leftBackDrive = hardwareMap.dcMotor.get("leftBackDrive");
+        leftFrontDrive.setDirection(DcMotorSimple.Direction.REVERSE); //Setting reverse direction to account for spin and motor direction
+        leftBackDrive.setDirection(DcMotorSimple.Direction.REVERSE);
 
-        // Wait for the game to start (driver presses PLAY)
+        leftLift = hardwareMap.dcMotor.get("leftLift"); //left lift motor
+        rightLift = hardwareMap.dcMotor.get("rightLift"); //right lift motor
+
+        leftIntake = hardwareMap.dcMotor.get("rightLift"); //left intake motor
+        rightIntake = hardwareMap.dcMotor.get("rightLift"); //right intake motor
+        leftIntake.setDirection(DcMotorSimple.Direction.REVERSE); //reverse one motor for intake
+
+
+        armServo = hardwareMap.servo.get("armServo"); //servo for the rotating single bar lift (reverse 4bar lift from VEX adaptive)
+        clawServo = hardwareMap.servo.get("clawServo");
+        capstoneServo = hardwareMap.servo.get("capstoneServo");//servo to drop marker into crater
+        //foundation will be moved by a 3d printed part on the lift going to base level
+
+        sensorRangeLeftFront = hardwareMap.get(DistanceSensor.class, "sensorRangeLeftFront");
+        sensorRangeLeftBack = hardwareMap.get(DistanceSensor.class, "sensorRangeLeftBack");
+        sensorRangeRightFront = hardwareMap.get(DistanceSensor.class, "sensorRangeRightFront");
+        sensorRangeRightBack = hardwareMap.get(DistanceSensor.class, "sensorRangeRightBack");
+
+        //encoder hardware, reset position
+        telemetry.addData("Status", "Resetting Encoders");
+        telemetry.update();
+
+        leftLift.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        rightLift.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+
+        leftLift.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        rightLift.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+
+        //finishes reset
+        telemetry.addData("Path0",  "Starting at %7d :%7d",
+                leftLift.getCurrentPosition(),
+                rightLift.getCurrentPosition());
+        telemetry.update();
+
+
+        //</editor-fold>
+        telemetry.addData("Status", "Initialized");
         waitForStart();
         runtime.reset();
+
+        telemetry.addData("Status", "Run Time: " + runtime.toString());
+//END OF CODE EDIT
 
         // run until the end of the match (driver presses STOP)
         while (opModeIsActive()) {
